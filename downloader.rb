@@ -58,9 +58,9 @@ class Downloader
     output_path = File.join(File.dirname(__FILE__), output_dir, filename)
     logger.info("Saving file to: #{output_path}")
     save_image!(output_path, image_response)
-    rescue => exception
-      logger.error(exception)
-      raise
+  rescue => exception
+    logger.error(exception)
+    raise
   end
 
   private
