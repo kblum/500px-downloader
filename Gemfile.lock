@@ -8,7 +8,7 @@ GEM
       multi_xml (>= 0.5.2)
     mini_portile2 (2.3.0)
     multi_xml (0.6.0)
-    nokogiri (1.8.4)
+    nokogiri (1.8.5)
       mini_portile2 (~> 2.3.0)
     rake (12.3.1)
     ruby-debug-ide (0.6.1)
@@ -20,7 +20,7 @@ PLATFORMS
 DEPENDENCIES
   debase
   httparty
-  nokogiri (~> 1.8.2)
+  nokogiri (~> 1.8.5)
   ruby-debug-ide
 
 BUNDLED WITH
