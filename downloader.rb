@@ -2,6 +2,7 @@ require 'logger'
 require 'httparty'
 require 'nokogiri'
 require 'json'
+require 'mime/types'
 
 class Downloader
 
@@ -37,13 +38,10 @@ class Downloader
 
     image_response = fetch(image_url)
 
-    # content-type => "image/jpeg"
-    # content-disposition => "filename=stock-photo-123456.jpg"
     image_headers = image_response.headers
 
-    image_extension = File.extname(image_headers['content-disposition']) # => ".jpg"
-
-    logger.debug("Content-Type: #{image_headers['content-type']}; Image extension: #{image_extension}")
+    image_extension = extract_image_extension(image_headers)
+    raise StandardError.new("Unable to extract image extension for #{@url}") if image_extension.nil?
     
     # page_title => "Title by Author - Photo 123456 / 500px"
     # clean up title for filename by replacing "Photo 123456 / 500px" with "500px-123456"
@@ -106,6 +104,28 @@ class Downloader
     end
 
     image_url
+  end
+
+  def extract_image_extension(headers)
+    # examples for headers:
+    # content-type => "image/jpeg"
+    # content-disposition => "filename=stock-photo-123456.jpg"
+
+    content_type = headers['content-type']
+    content_disposition = headers['content-disposition']
+
+    unless content_disposition.nil?
+      image_extension = File.extname(content_disposition) # => ".jpg"
+      return image_extension unless image_extension.nil?
+    end
+
+    image_extension = MIME::Types[content_type].first.extensions.first
+    unless image_extension.nil?
+      image_extension = 'jpg' if image_extension.downcase == 'jpeg' # normalise
+      return ".#{image_extension}"
+    end
+
+    nil # cannot extract image extension
   end
 
   def fetch(url)
