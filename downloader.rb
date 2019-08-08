@@ -36,7 +36,7 @@ class Downloader
     logger.debug("image title: #{image_title}")
     logger.debug("HTML - og:title: #{parse_meta_tag_content(document, 'og:title')}")
 
-    image_response = fetch(image_url)
+    image_response = fetch_image(image_url)
 
     image_headers = image_response.headers
 
@@ -126,6 +126,21 @@ class Downloader
     end
 
     nil # cannot extract image extension
+  end
+
+  def fetch_image(image_url)
+    # attempt to download full image (potentially larger than current image URL)
+    # replace "/styles/ANY/" with "/styles/full/"
+    desired_size = 'full'
+    image_url_full = image_url.gsub(/(\/styles\/)(\w*)(\/)/, "\\1#{desired_size}\\3")
+    begin
+      return fetch(image_url_full)
+    rescue
+      logger.debug("Unable to download full image '#{image_url_full}'; reverting to '#{image_url}'")
+    end
+
+    # download given image
+    fetch(image_url)
   end
 
   def fetch(url)
