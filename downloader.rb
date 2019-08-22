@@ -32,7 +32,7 @@ class Downloader
     image_title = image_title.gsub(/\s+/, ' ') # collapse multiple spaces
 
     logger.debug("Page title: #{page_title}")
-    logger.debug("HTML - og:image: #{image_url}")
+    logger.debug("Image URL: #{image_url}")
     logger.debug("image title: #{image_title}")
     logger.debug("HTML - og:title: #{parse_meta_tag_content(document, 'og:title')}")
 
@@ -103,6 +103,15 @@ class Downloader
       image_url = image['url']
     end
 
+    # check that image URL is valid
+    unless image_url =~ /^https:\/\//
+      # otherwise load from JSON embed data
+      json_metadata_url = document.at("link[type='application/json+oembed']")['href']
+      json_metadata_response = fetch(json_metadata_url)
+      json_metadata = JSON.parse(json_metadata_response.body)
+      image_url = json_metadata['url']
+    end
+
     image_url
   end
 
@@ -152,6 +161,10 @@ class Downloader
 
   def parse_meta_tag_content(document, property)
     document.at("meta[property=\"#{property}\"]")['content']
+  end
+
+  def parse_link_tag(document, type)
+    document.at("link[type=\"#{type}\"]")['href']
   end
 
   def save_image!(output_path, image_response)
