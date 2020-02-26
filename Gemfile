@@ -1,7 +1,7 @@
 source 'https://rubygems.org'
 
 gem 'httparty'
-gem 'nokogiri', '~> 1.10.4'
+gem 'nokogiri', '~> 1.10.8'
 gem 'mime-types'
 
 group :development do
