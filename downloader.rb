@@ -21,20 +21,33 @@ class Downloader
 
   def run
     logger.info("Downloading: #{@url}")
-    page_html = fetch(@url).body
-    document = Nokogiri::HTML(page_html)
+    image_id = extract_id(@url)
+    raise StandardError.new("Unable to extract image ID for #{@url}") if image_id.nil?
+    logger.info("Image ID: #{image_id}")
+    
+    json_metadata_url = "https://api.500px.com/v1/photos"
+    json_metadata_query = {
+      ids: image_id,
+      image_size: [2048],
+      include_states: 1,
+      expanded_user_info: true,
+      include_tags: true,
+      include_geo: true
+    }
+    json_metadata_response = fetch(json_metadata_url, json_metadata_query)
+    json_metadata = JSON.parse(json_metadata_response.body)
+    image_json_metadata = json_metadata['photos'][image_id.to_s]
 
-    image_url = extract_image_url(document)
+    image_url = image_json_metadata['image_url'].first
     raise StandardError.new("Unable to extract image URL for #{@url}") if image_url.nil?
 
-    page_title = document.at("title").text
-    image_title = document.at("link[rel='alternate']")['title']
-    image_title = image_title.gsub(/\s+/, ' ') # collapse multiple spaces
-
-    logger.debug("Page title: #{page_title}")
-    logger.debug("Image URL: #{image_url}")
-    logger.debug("image title: #{image_title}")
-    logger.debug("HTML - og:title: #{parse_meta_tag_content(document, 'og:title')}")
+    image_title = image_json_metadata['name']
+    author_name = image_json_metadata['user']['fullname']
+    logger.debug("Image title: #{image_title}")
+    logger.debug("Author name: #{author_name}")
+    clean_image_title = "#{image_title} by #{author_name} - 500px-#{image_id}"
+    clean_image_title = clean_image_title.gsub(/\s+/, ' ') # collapse multiple spaces
+    logger.debug("Title: #{clean_image_title}")
 
     image_response = fetch_image(image_url)
 
@@ -42,12 +55,6 @@ class Downloader
 
     image_extension = extract_image_extension(image_headers)
     raise StandardError.new("Unable to extract image extension for #{@url}") if image_extension.nil?
-    
-    # page_title => "Title by Author - Photo 123456 / 500px"
-    # clean up title for filename by replacing "Photo 123456 / 500px" with "500px-123456"
-    /Photo\s(?<image_id>\d+)\s\/\s500px$/ =~ page_title # extract image ID from title
-    clean_image_title = page_title.gsub(/Photo\s\d+ \/ 500px$/, "500px-#{image_id}")
-    clean_image_title = clean_image_title.gsub(/\s+/, ' ') # collapse multiple spaces
     # build filename with extension (`image_extension` already contains the ".")
     filename = "#{clean_image_title}#{image_extension}"
 
@@ -70,49 +77,18 @@ class Downloader
     dir
   end
 
-  def extract_image_url(document)
-    image_url = parse_meta_tag_content(document, 'og:image')
-
-    # handle images where `image_title` => "https://500px.com/graphics/nude/img_3.png"
-    if image_url =~ /500px\.com\/graphics\/nude\/.*/
-      # find appropriate script tag and extract JSON string for photo
-      matches = document.search('script').map {|script| script.text.match(/window\.PxPreloadedData\s?=\s?(.+);/)}.compact.first
-      return nil if matches.nil?
-      preloaded_data_string = matches&.captures&.first
-      return nil if preloaded_data_string.nil?
-      preloaded_data = JSON.parse(preloaded_data_string)
-
-      # get images array from JSON data
-      images = preloaded_data.dig('photo', 'images')
-      # sample of image element JSON schema:
-      #
-      # {
-      #   "format": "jpeg",
-      #   "https_url": "...",
-      #   "size": 1|2|4|35|2048|...,
-      #   "url: "..."
-      # }
-      return nil if images.nil? || images.empty?
-
-      # extract all JPG images
-      images = images.select {|i| ['jpeg', 'jpg'].include?(i['format'])}
-      # find largest image
-      image = images.max_by {|i| i['size']}
-      return nil if image.nil?
-
-      image_url = image['url']
-    end
-
-    # check that image URL is valid
-    unless image_url =~ /^https:\/\//
-      # otherwise load from JSON embed data
-      json_metadata_url = document.at("link[type='application/json+oembed']")['href']
-      json_metadata_response = fetch(json_metadata_url)
-      json_metadata = JSON.parse(json_metadata_response.body)
-      image_url = json_metadata['url']
-    end
-
-    image_url
+  # Extract image ID from image URL
+  # Example URLs: 
+  #   https://500px.com/photo/123456789/Photo-Title-by-Author-Name
+  #   https://web.500px.com/photo/123456789/Photo-Title-by-Author-Name/
+  # ID => 123456789
+  def extract_id(image_id)
+    regex = /500px\.com\/photo\/(\d+)\//
+    matches = regex.match(image_id)
+    return nil if !matches
+    match = matches[1]
+    return nil if match.empty?
+    match
   end
 
   def extract_image_extension(headers)
@@ -152,19 +128,11 @@ class Downloader
     fetch(image_url)
   end
 
-  def fetch(url)
+  def fetch(url, query=nil)
     logger.debug("Loading URL: #{url}")
-    response = HTTParty.get(url)
+    response = query.nil? ? HTTParty.get(url) : HTTParty.get(url, query: query)
     raise StandardError.new('HTTP request unsuccessful') unless response.success?
     response
-  end
-
-  def parse_meta_tag_content(document, property)
-    document.at("meta[property=\"#{property}\"]")['content']
-  end
-
-  def parse_link_tag(document, type)
-    document.at("link[type=\"#{type}\"]")['href']
   end
 
   def save_image!(output_path, image_response)
